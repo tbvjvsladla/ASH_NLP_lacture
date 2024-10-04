@@ -192,11 +192,30 @@ def set_rare_vocab(raw_vocab, th, report=False):
     return tot_vocab_cnt, rare_vocab_cnt
 
 
-def val_vocab_info(word_to_idx, vocab):
-    print(f"단어집합(vocab)은 word_to_idx를 통해서")
-    print(f"[단어 : idx]의 {type(word_to_idx)}타입이 되고")
-    print(f"스페셜 토큰 '<PAD>', '<UNK>'을 포함하여")
-    print(f"총 관리되는 단어 '{len(vocab)}' -> '{len(word_to_idx)}'가 됨")
+# word_to_index 단어:정수쌍 딕셔너리와 거울쌍 딕셔너리
+# index_to_word 딕셔너리 생성 함수
+def set_word_to_idx(spec_token, vocab, report=False):
+    num_spec_token = len(spec_token)
+
+    # 초기화 및 스페셜 토큰 매핑
+    word_to_idx = {token: idx for idx, token in enumerate(spec_token)}  
+
+    # word_to_idx를 {토큰, 토큰의 인덱스}로 스페셜토큰을 포함하여 업데이트
+    word_to_idx.update({word: idx + num_spec_token for idx, word in enumerate(vocab)})
+
+    # word_to_idx의 거울쌍 딕셔너리 생성
+    idx_to_word = {val: key for key, val in word_to_idx.items()}
+
+    if report:
+        print(f"단어집합(vocab)은 word_to_idx를 통해서")
+        print(f"[단어 : idx]의 {type(word_to_idx)}타입이 되고")
+        print(f"스페셜 토큰 ", end='')
+        for item in spec_token:
+            print(f"{item} ", end='')
+        print(f"을 포함하여")
+        print(f"총 관리되는 단어 '{len(vocab)}' -> '{len(word_to_idx)}'가 됨")
+
+    return word_to_idx, idx_to_word
 
 
 

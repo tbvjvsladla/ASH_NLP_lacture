@@ -164,7 +164,7 @@ def val_raw_vocab(raw_vocab, sample):
                    tablefmt="grid", stralign="left"))
     
 
-def set_rare_vocab(raw_vocab, th):
+def set_rare_vocab(raw_vocab, th, report=False):
     tot_vocab_cnt = len(raw_vocab) # 초기 단어장의 총 단어개수
     rare_vocab_cnt = 0 # 초기 단어장 중 희소단어 개수를 저장할 변수
     # 단어 당 등장비율, 희소단어의 등장비율을 계산하기 위한 변수
@@ -181,10 +181,12 @@ def set_rare_vocab(raw_vocab, th):
 
     rare_prop = rare_vocab_cnt / tot_vocab_cnt
     rare_freq_prop = rare_freq / tot_freq
-    print(f'초기 단어장에 기록된 단어 종류 : {tot_vocab_cnt}')
-    print(f'초기 단어장 중 희소단어({th-1}번 미만 등장) 종류 : {rare_vocab_cnt}')
-    print(f'초기 단어장 내 희소단어 비율 : {rare_prop*100:.2f} %')
-    print(f'전체 단어 중 희소단어 등장 비율 : {rare_freq_prop*100:.2f} %')
+
+    if report:
+        print(f'초기 단어장에 기록된 단어 종류 : {tot_vocab_cnt}')
+        print(f'초기 단어장 중 희소단어({th-1}번 미만 등장) 종류 : {rare_vocab_cnt}')
+        print(f'초기 단어장 내 희소단어 비율 : {rare_prop*100:.2f} %')
+        print(f'전체 단어 중 희소단어 등장 비율 : {rare_freq_prop*100:.2f} %')
 
     # 총 단어 개수 및 희소단어 개수는 반환한다
     return tot_vocab_cnt, rare_vocab_cnt
@@ -265,14 +267,15 @@ def val_encode_decode(sample_idx, idx_to_word, token, encode, content):
 
 
 
-def set_sent_pad(encode_x, context_length):
-    print(f'훈련 데이터셋 최대 길이: {max(len(exam) for exam in encode_x)}')
-    print(f'훈련 데이터셋 평균 길이: {sum(map(len, encode_x)) / len(encode_x):.2f}')
+def set_sent_pad(encode_x, context_length, report=False):
+    if report:
+        print(f'훈련 데이터셋 최대 길이: {max(len(exam) for exam in encode_x)}')
+        print(f'훈련 데이터셋 평균 길이: {sum(map(len, encode_x)) / len(encode_x):.2f}')
 
-    plt.hist([len(exam) for exam in encode_x], bins=50)
-    plt.xlabel('length of samples')
-    plt.ylabel('number of samples')
-    plt.show()
+        plt.hist([len(exam) for exam in encode_x], bins=50)
+        plt.xlabel('length of samples')
+        plt.ylabel('number of samples')
+        plt.show()
 
     def below_th_len(encode_x, context_length):
         cnt = 0
@@ -303,7 +306,7 @@ def val_pad_shape(x, content):
 
 
 # 데이터 전처리가 완료된 항목을 텐서 데이터 로더로 변환하는 함수
-def convert_dataloader(x_data, y_label, bs, content=None, report=False):
+def set_dataloader(x_data, y_label, bs, content=None, report=False):
     # 입력된 데이터를 텐서 자료형 -> 데이터셋 -> 데이터로더로 변환
     tensor_x = torch.tensor(x_data, dtype=torch.int64)
     tensor_y = torch.tensor(y_label, dtype=torch.int64)

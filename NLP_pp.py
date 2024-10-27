@@ -12,12 +12,15 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 
 # 결측치&중복치가 존재하면 제거하는 함수
-def df_cleaning(dataframe, column):
+def df_cleaning(dataframe, column, reidx=True):
     # 결측치가 존재하면 결측치 제거 수행
     clean_df = dataframe.dropna(how='any')
     # 특정 컬럼을 기준으로 중복치 제거
     clean_df = clean_df.drop_duplicates(
         subset=column, keep='first')
+    # 결측치&중복치 제거 후 index를 리셋 -> 아래의 코드 수행
+    if reidx:
+        clean_df = clean_df.reset_index(drop=True)
     
     return clean_df
 
@@ -25,7 +28,7 @@ def df_cleaning(dataframe, column):
 def tokenize(x_data, word_tokenizer):
     tokenized_sentences = list()
 
-    for sent in tqdm(x_data):
+    for sent in tqdm(x_data, desc="토큰화 진행 중"):
         tokenized_sent = word_tokenizer.morphs(sent)
         tokenized_sentences.append(tokenized_sent)
 
@@ -144,9 +147,12 @@ def decompose_jamo(cl_x):
 def val_class_ratio(x, y, content):
     # 클래스 비율 계산하는 함수
     def class_ratio(label):
-        lable_counts = Counter(label)
-        ratio = list(lable_counts.values())[0] / sum(list(lable_counts.values()))
-        return f"{ratio*100:.2f}%"
+        try :
+            lable_counts = Counter(label)
+            ratio = list(lable_counts.values())[0] / sum(list(lable_counts.values()))
+            return f"{ratio*100:.2f}%"
+        except:
+            return f"비율연산 불가 라벨데이터"
     print(f"{content} 데이터셋 개수: {len(x)}, 클래스 비율: {class_ratio(y)}")
 
 
@@ -194,7 +200,7 @@ def set_rare_vocab(raw_vocab, th, report=False):
 
 # word_to_index 단어:정수쌍 딕셔너리와 거울쌍 딕셔너리
 # index_to_word 딕셔너리 생성 함수
-def set_word_to_idx(spec_token, vocab, report=False):
+def set_word_to_idx(spec_token, vocab, report=False, content='단어'):
     num_spec_token = len(spec_token)
 
     # 초기화 및 스페셜 토큰 매핑
@@ -206,7 +212,7 @@ def set_word_to_idx(spec_token, vocab, report=False):
     # word_to_idx의 거울쌍 딕셔너리 생성
     idx_to_word = {val: key for key, val in word_to_idx.items()}
 
-    if report:
+    if report and content=='단어':
         print(f"단어집합(vocab)은 word_to_idx를 통해서")
         print(f"[단어 : idx]의 {type(word_to_idx)}타입이 되고")
         print(f"스페셜 토큰 ", end='')
@@ -215,15 +221,25 @@ def set_word_to_idx(spec_token, vocab, report=False):
         print(f"을 포함하여")
         print(f"총 관리되는 단어 '{len(vocab)}' -> '{len(word_to_idx)}'가 됨")
 
+    if report and content=='태그':
+        print(f"태그집합(tags)은 word_to_tag를 통해서")
+        print(f"[태그토큰 : idx]의 {type(word_to_idx)}타입이 되고")
+        print(f"스페셜 태그토큰 ", end='')
+        for item in spec_token:
+            print(f"{item} ", end='')
+        print(f"을 포함하여")
+        print(f"총 관리되는 태그 '{len(vocab)}' -> '{len(word_to_idx)}'가 됨")
+
     return word_to_idx, idx_to_word
 
 
 
 # 단어를 정수 인덱싱 규칙으로 정수 인덱싱 수행하기
-def text_to_sequences(tokenized_data, word_to_idx):
+def text_to_sequences(tokenized_data, word_to_idx, 
+                      spec_token='<UNK>'):
     encoded_data = [] #리턴해야할 정수 인코딩 결과값
 
-    if '<UNK>' not in word_to_idx:
+    if spec_token not in word_to_idx:
         print(f'word_to_idx에 스페셜 토큰 있는지 확인')
         return tokenized_data
 
@@ -234,7 +250,7 @@ def text_to_sequences(tokenized_data, word_to_idx):
             try: #word_to_idx에서 단어를 찾은 뒤 해당 단어의 인덱스(숫자)를 입력
                 idx_sequence.append(word_to_idx[word])
             except KeyError: # word_to_idx 딕셔너리에 없는 키(단어)등장시 UNK로 인덱싱
-                idx_sequence.append(word_to_idx['<UNK>'])
+                idx_sequence.append(word_to_idx[spec_token])
         
         #문장 내 단어를 모두 정수로 변환한 후에 이를 리턴값(리스트)에 입력
         encoded_data.append(idx_sequence)
@@ -243,7 +259,7 @@ def text_to_sequences(tokenized_data, word_to_idx):
 
 
 
-def val_encode_decode(sample_idx, idx_to_word, token, encode, content):
+def val_encode_decode(sample_idx, idx_to_word, token, encode, content='Eng'):
     # 임의의 샘플(sample_idx)를 바탕으로
     # 토큰화된 데이터(token : 원본)
     # 해당 토큰을 정수인코딩 한 결과(encode)
@@ -342,3 +358,102 @@ def set_dataloader(x_data, y_label, bs, content=None, report=False):
         print(f"{content}용 Y(Label)데이터 크기: {list(tensor_y.shape)}")
 
     return dataloader
+
+
+
+# NER 태그에서 BIO태깅 규칙으로 라벨링된 y랑 중간 연산결과물 토큰화된 tag데이터를 생성하는 함수
+def BIO_tagging(tokenized_x_data, tag_data, word_tokenizer):
+    # BIO 태깅 규칙으로 라벨링 처리될 y_data 리스트 선언
+    tagged_y_label = []
+    # 태그 데이터도 토큰화가 잘 되었는지 확인이 팔요함...
+    token_tag_data = []
+
+    for token_x, tags in tqdm(zip(tokenized_x_data, tag_data), 
+                              total=len(tokenized_x_data), 
+                              desc="BIO 태깅 진행 중"):
+        # 1) token_x(토큰화 처리된 x_data의 i번째 문서)와 매칭되는 y_label 생성
+        # y_label은 token_x의 토큰 개수만큼 초기화 하는것을 의미함
+        token_y = ['O'] * len(token_x)
+        token_tags = [] # 태그가 잘 이뤄지는지 추적하는 데이터
+        
+        # 2) token_x에 대한 개체:태그 정보가 포함된 tag_data의 데이터 분해
+        for entity, label in tags:
+            # entity를 토큰화하고, 몇 개의 토큰으로 분해되었는지 확인
+            entity_token = word_tokenizer.morphs(entity)
+            entity_len = len(entity_token)
+
+            # 토큰화된 개체명 정보를 붙이기
+            token_tags.append(entity_token)
+            # 3) token_x에서 entity_token과 일치하는 정보를 색인하여
+            # 해당 정보를 올바르게 B-I labeling을 적용한다
+            for i in range(len(token_x) - entity_len+1):
+                # 정보를 찾아냈을 시, 시작은 'B-' 접두를 태그에 붙이고
+                # 나머지 항목은 'I-' 접두를 태그에 붙이는 작업
+                if token_x[i : i+entity_len] == entity_token:
+                    token_y[i] = f'B-{label}'  # 'B-' 접두 추가 태깅
+                    token_tags.append(token_y[i]) # 토큰태그가 잘 되엇는지 검증
+
+                    for j in range(1, entity_len):
+                        token_y[i+j] = f'I-{label}'  # 나머지는 'I-' 접두 추가 태깅
+                        token_tags.append(token_y[i+j]) # 토큰태그가 잘 되엇는지 검증
+                    break  # 첫 번째로 일치하는 위치만 태깅
+
+        # 4) BIO 태깅 규칙으로 업데이트가 완료된 
+        # i번째 문서에 대한 라벨 정보를 리스트에 추가
+        tagged_y_label.append(token_y)
+        # 검증하기 위한 태그 토큰 정보를 리턴
+        token_tag_data.append(token_tags)
+
+    return tagged_y_label, token_tag_data
+
+
+# BIO 태깅이 잘 되었는지 검증하는 함수
+def val_BIO_tagging(raw_x, tok_x, tag, tok_tag, tok_y, sample_idx):
+    print(f"원문 데이터 raw_x : {raw_x[sample_idx]}")
+    print(f"토큰화 데이터(x)  : {tok_x[sample_idx]}")
+    print(f"태그 데이터(tag)  : {tag[sample_idx]}")
+    print(f"토큰 태그데이터   : {tok_tag[sample_idx]}")
+    print(f"라벨링 데이터(y)  : {tok_y[sample_idx]}")
+
+
+# NER 태깅용 단어장을 만드는 함수, 이때 토큰화된 태그 종류도 몇종인지 확인한다.
+def set_vocab_label_forNER(tokenized_x_data, tagged_y_label, 
+                      report=False):
+    vocab = set() # 중복 회피를 위해 집합 변수로 선언
+
+    for tokens, tag_labels in zip(tokenized_x_data, tagged_y_label):
+        for token, tag_label in zip(tokens, tag_labels):
+            # 토큰이 'O' 로 태깅이 된 경우가 아니면 vocab에 삽입
+            if tag_label != 'O':
+                vocab.add(token)
+
+    vocab = list(vocab) #처리 완료 후 리스트로 변환
+
+    # 태그종류(class)를 정렬하는 함수는 콜백함수로 뺀다.
+    sorted_tags = sort_tags(tagged_y_label)
+
+    if report:
+        print(f"단어장에 포함된 단어는 {len(vocab)}")
+        print(f"태깅된 항목 종류(class):")
+        for idx, vel in enumerate(sorted_tags):
+            print(vel, end=', ')
+            if (idx+1) % 5 == 0:
+                print()
+
+    return vocab, sorted_tags
+
+
+# 태그종류(class)를 정렬하는 함수
+def sort_tags(tagged_y_label):
+    # 태그로 라벨링된 데이터에서 중복 항목 제거
+    unique_tags = set(label for labels in tagged_y_label for label in labels)
+    # 중복을 제거한 태그 항목을 보기 좋게 정렬
+    sorted_tags = ['O'] if 'O' in unique_tags else []
+    other_tags = sorted(
+        [label for label in unique_tags if label != 'O'],
+        key=lambda x: (x[2:], x[0]) #두개의 조건으로 정렬
+        # 여기서 두개의 조건은 태그 단어의 첫번째, 세번째 단어임
+    )
+    sorted_tags.extend(other_tags) # 정렬이 완료된 태그항목
+
+    return sorted_tags

@@ -25,11 +25,21 @@ def df_cleaning(dataframe, column, reidx=True):
     return clean_df
 
 # document 컬럼에 대한 워드 토크나이징 수행
-def tokenize(x_data, word_tokenizer):
+def tokenize(x_data, word_tokenizer, arch=None):
     tokenized_sentences = list()
 
     for sent in tqdm(x_data, desc="토큰화 진행 중"):
-        tokenized_sent = word_tokenizer.morphs(sent)
+        if arch == "mecab":
+            tokenized_sent = word_tokenizer.morphs(sent)
+        elif arch == "nltk":
+            tokenized_sent = word_tokenizer.tokenize(sent)
+        elif arch == "Bert":
+            tokenized_sent = word_tokenizer.tokenize(sent)
+        
+        elif arch is None:
+            print("토크나이저 아키텍쳐 입력바람")
+            return None
+        
         tokenized_sentences.append(tokenized_sent)
 
     return tokenized_sentences
